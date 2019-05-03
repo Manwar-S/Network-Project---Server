@@ -1,0 +1,304 @@
+#include<sys/socket.h>
+#include<sys/types.h>
+#include<netinet/ip.h>
+#include<stdio.h>
+#include<unistd.h>
+#include<vector>
+#include<thread>
+#include<cstring>
+#include<mutex>
+#include"lurk_pro_server.h"
+using namespace std;
+char name[32];
+Game G;
+//13 write
+void writeConnection(Connection P, int skt){
+	int type = 13;
+	write(skt,&type,1);
+
+	write(skt, &P.Conn_Room_num,2);
+
+	char name_buff[sizeof(P.Conn_Room_name)];
+	strncpy(name_buff,P.Conn_Room_name.c_str(), sizeof(name_buff));
+	write(skt, name_buff,32);
+
+
+	int des_len = P.Conn_Room_des_len;
+	char des_buff[des_len];
+        
+	write(skt, &des_len,2);
+	memcpy(des_buff, P.Conn_Room_des.c_str(), des_len);
+        write(skt, des_buff, des_len);
+
+}
+//11 write
+void writeGame(Game G, int skt){
+	int type = 11;
+	write(skt,&type,1);
+
+	write(skt, &G.Int_points,2);
+        write(skt, &G.Stat_limit,2);
+
+	unsigned short des_len = G.Game_des.length();
+        char des_buff[des_len];
+        write(skt, &des_len,2);
+        memcpy(des_buff, G.Game_des.c_str(), des_len);
+        write(skt, des_buff, des_len);
+
+
+
+
+
+}
+
+// 10 write
+void writeCharacter(Character Ch , int skt){
+	
+	int type = 10;
+        write(skt,&type,1);
+
+        write(skt, &Ch.Char_Name,32);
+        write(skt, &Ch.Flags,1);
+        write(skt, &Ch.Attack,2);
+        write(skt, &Ch.Defense,2);
+        write(skt, &Ch.Regen,2);
+        write(skt, &Ch.Health,2);
+        write(skt, &Ch.Gold,2);
+        write(skt, &Ch.Curr_Room_Num,2);
+
+   
+        write(skt, &Ch.Char_Des_len,2);
+	char des_buff[Ch.Char_Des_len];
+        memcpy(des_buff, Ch.Char_des.c_str(), Ch.Char_Des_len);
+        write(skt, des_buff, Ch.Char_Des_len);
+
+
+}
+
+// 9 write
+void writeRoom(Room P, int skt){
+	int type = 9;
+        write(skt,&type,1);
+
+	write(skt, &P.Room_num, 2); 
+
+	char name_buff[sizeof(P.Room_name)];
+        strncpy(name_buff,P.Room_name.c_str(), sizeof(name_buff));
+        write(skt, name_buff,32);
+	
+	write(skt, &P.Room_des_len,2);
+        char des_buff[P.Room_des_len];
+        memcpy(des_buff, P.Room_des.c_str(), P.Room_des_len);
+        write(skt, des_buff, P.Room_des_len);
+
+
+}
+
+// 8 write
+void writeAccept(Accept P, int skt){
+
+	int type = 8;
+        write(skt,&type,1);
+	
+
+	write(skt, &P.Accepted, 1);
+	
+}
+
+// 7 write
+void writeError(Error P, int skt){
+
+	int type = 7;
+        write(skt,&type,1);
+	
+	write(skt, &P.Err_code, 1);
+
+	write(skt, &P.Err_Message_len, 2);
+	
+	char des_buff[P.Err_Message_len];
+        memcpy(des_buff, P.Err_Message.c_str(), P.Err_Message_len);
+        write(skt, des_buff, P.Err_Message_len);
+
+}
+
+// 1 write
+
+void writeMessage(Message P, int skt){
+
+	int type = 1;
+        write(skt,&type,1);
+
+	write(skt, &P.Message_Len, 2);
+	write(skt, &P.Rec_Name, 32);
+	
+	write(skt, &P.Sen_Name,32);
+
+	char des_buff[P.Message_Len];
+        memcpy(des_buff, P.The_Message.c_str(), P.Message_Len);
+        write(skt, des_buff, P.Message_Len);
+}
+
+
+
+
+
+class client;
+vector<client*> clients;
+mutex data_lock; 
+class client {
+        public:
+                int client_fd;
+                thread client_thread;
+                char name[128];
+                int c_index;
+                mutex send_mutex;
+		int type;
+
+                client(int cfd) : client_fd(cfd) {
+                        client_thread = thread(&client::our_thread, this); 
+                }
+                void our_thread(){
+			Character Ch;
+			Connection Co;
+			Room R;
+			Accept A;
+			Error E;
+			Loot L;
+			PvPFight Pf
+			Fight F;
+			ChangeRoom Cr;
+			Message M;
+                        char this_buffer[2048];
+                        char name[128];
+			writeGame(G,client_fd);//
+
+
+                        for(;;){
+				size_t readlen = read(client_fd, &type,1);//
+				cout << "Type: " << type << endl;//
+                                if(!readlen) break; 
+                                data_lock.lock();
+                                
+					//read(client_fd, &type,1);//
+                                if(type == 10){
+					cout << "READING A TYPE 10" << endl;
+                                        read(client_fd, &Ch.Char_Name,32);
+                                        	//string Chname = name;
+                                        	//name[32] = 0;
+                                        	//Ch.Char_Name = (name);
+					cout << "Name: " << Ch.Char_Name << endl;
+
+                                        read(client_fd, &Ch.Flags,1);
+                                        read(client_fd, &Ch.Attack,2);
+                                        read(client_fd, &Ch.Defense,2);
+                                        read(client_fd, &Ch.Regen,2);
+                                        read(client_fd, &Ch.Health,2);
+                                        read(client_fd, &Ch.Gold,2);
+                                        read(client_fd, &Ch.Curr_Room_Num,2);
+
+                                        char des_buff[Ch.Char_Des_len];
+                                        read(client_fd, &Ch.Char_Des_len,2);
+                                      
+                                        read(client_fd, des_buff,Ch.Char_Des_len);
+					Ch.Char_des = des_buff;
+                                        writeCharacter(Ch,client_fd);
+                                }
+				if(type == 13){
+					cout << "READING A TYPE 13" << endl;
+					read(client_fd,&Co.Conn_Room_num,2);
+					read(client_fd,&Co.Conn_Room_name,32);
+					char des_buff[Co.Conn_Room_len];
+					read(client_fd,&Co.Conn_Room_len,2);
+					read(client_fd,des_buff,Co.Conn_Room_len);
+					Ch.Conn_Room_des = des_buff;
+					writeConnection(Co,client_fd);
+				}
+				if(type == 12){//
+					cout << "READING A TYPE 12" << endl;
+                                }
+				if(type == 9){
+					cout << "READING A TYPE 9" << endl;
+					read(client_fd,&R.Room_num,2);
+                                        read(client_fd,&R.Room_name,32);
+                                        char des_buff[R.Room_des_len];
+                                        read(client_fd,&RRoom_des_len,2);
+                                        read(client_fd,des_buff,R.Room_des_len);
+                                        R.Room_des = des_buff;
+                                        writeRoom(R,client_fd);
+                                }
+				if(type == 8){//
+					cout << "READING A TYPE 8" << endl;
+                                }
+				if(type == 6){
+					cout << "READING A TYPE 6" << endl;
+                                }
+				if(type == 5){
+					cout << "READING A TYPE 5" << endl;
+                                }
+				if(type == 3){
+					cout << "READING A TYPE 3" << endl;
+                                }
+				if(type == 2){
+					cout << "READING A TYPE 2" << endl;
+                                }
+				if(type == 1){
+					cout << "READING A TYPE 1" << endl;
+                                }
+
+
+
+
+
+
+
+
+                                data_lock.unlock();
+                        }
+                        close(client_fd);
+                        client_fd = -1;
+                        printf("Client %s disconnect\n", name);
+                }
+                ~client(){ 
+                        client_thread.join();
+                }
+};
+
+
+
+
+int main(int argc, char ** argv){
+	struct sockaddr_in sad;
+	if(argc > 1)
+		sad.sin_port = htons(atoi(argv[1]));
+	else {
+		sad.sin_port = htons(5099);
+		puts("Defaulting to port 5099");
+	}
+	sad.sin_addr.s_addr = INADDR_ANY;
+	sad.sin_family = AF_INET;
+
+	int skt = socket(AF_INET, SOCK_STREAM, 0);
+	bind(skt, (struct sockaddr *)(&sad), sizeof(struct sockaddr_in));
+	listen(skt, 5);
+	int client_fd;
+	struct sockaddr_in mad;
+	socklen_t mad_size = sizeof(struct sockaddr_in);
+	int type;
+	for(;;){
+		client_fd = accept(skt, (struct sockaddr *)&mad, &mad_size);
+		cout << "connected!\n";
+		data_lock.lock();
+		clients.push_back(new client(client_fd));
+		for(int i = 0; i < clients.size(); i++){
+			if(clients[i]->client_fd == -1){
+				auto tmp = clients[i];
+				clients[i] = clients[clients.size()-1];
+				clients.pop_back();
+				delete tmp;
+			}
+		}
+		data_lock.unlock();
+
+	}
+	return 0;
+}

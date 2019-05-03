@@ -1,0 +1,477 @@
+#include<sys/socket.h>
+#include<sys/types.h>
+#include<netinet/ip.h>
+#include<stdio.h>
+#include<unistd.h>
+#include<vector>
+#include<thread>
+#include<cstring>
+#include<mutex>
+#include"lurk_pro_server.h"
+#include"lurk_classes.h"
+#include<fstream>
+#include<sstream>
+#include<iostream>
+#include<iterator>
+
+using namespace std;
+using std:: vector;
+Game G;
+extern vector<Player*> Players;//
+extern vector<Player*> Mine;//
+
+vector<Room> myRooms;
+extern vector<Character> Monsters;
+extern vector<int> conn;
+vector <string> temp;
+vector <string> temp2;
+void Create_Rooms(){
+	fstream fin;
+	fin.open("Rooms.csv", ios:: in);
+
+	string line, word, temp2;
+	int roll;
+	
+	while (fin.good()) {
+		getline(fin, line); 
+		stringstream s(line);
+	
+		while (getline(s, word, '%')) { 
+   
+            		temp.push_back(word);
+			if(temp.size() == 3){
+				Room  m;
+				m.Room_num = stoi(temp[0]);
+				m.Room_name = temp[1];
+				m.Room_des = temp[2];
+				m.Room_des_len = m.Room_des.length()-1;
+				temp.clear();
+				myRooms.push_back(m);
+			} 
+        	} 
+ 	}
+
+	myRooms[0].conn = {1, 2, 3};
+	//myRooms[3].addMonsters("test",30,20,0,20,100,"A test");
+	myRooms[1].conn = {4, 9, 10};
+	myRooms[2].conn = {0, 8, 11};
+	myRooms[3].conn = {0};
+	myRooms[4].conn = {1, 5};
+	myRooms[5].conn = {4, 6};
+	myRooms[6].conn = {7, 5};
+	myRooms[7].conn = {6};
+	myRooms[8].conn = {2};
+	myRooms[9].conn = {1};
+	myRooms[10].conn = {1};
+	myRooms[11].conn = {2};
+
+
+	fin.close();
+}
+
+void Create_Monsters(){
+        fstream fin;
+        fin.open("Monsters.csv", ios:: in);
+
+        string line, word;
+       // int roll;
+        
+        while (fin.good()) {
+                getline(fin, line);
+                stringstream s(line);
+                while (getline(s, word, ',')) {
+			temp2.push_back(word); 
+                        if(temp2.size() == 8){
+                                Character m;
+				m.CharName = temp2[0];
+				m.Flags = 160;
+				m.Attack = stoi(temp2[1]);
+				m.Defense = stoi(temp2[2]);
+				m.Regen = stoi(temp2[3]);
+				m.Health = stoi(temp2[4]);
+				m.Gold = stoi(temp2[5]);
+				m.Curr_Room_Num = stoi(temp2[6]);
+				m.Char_des = temp2[7];
+				m.Char_Des_len = m.Char_des.length()-1;
+                                temp2.clear();
+                                Monsters.push_back(m);
+                        } 
+                } 
+        }
+
+	fin.close();
+}
+
+
+//13 write
+void writeConnection(Connection P, int skt){
+	int type = 13;
+	write(skt,&type,1);
+
+	write(skt, &P.Conn_Room_num, 2); 
+
+        char name_buff[sizeof(P.Conn_Room_name)];
+        strncpy(name_buff,P.Conn_Room_name.c_str(), sizeof(name_buff));
+        write(skt, name_buff,32);
+
+        write(skt, &P.Conn_Room_des_len,2);
+        char des_buff[P.Conn_Room_des_len];
+        memcpy(des_buff, P.Conn_Room_des.c_str(), P.Conn_Room_des_len);
+        write(skt, des_buff, P.Conn_Room_des_len);
+
+
+
+}
+//11 write
+void writeGame(Game G, int skt){
+	int type = 11;
+	write(skt,&type,1);
+
+	write(skt, &G.Int_points,2);
+        write(skt, &G.Stat_limit,2);
+
+	unsigned short des_len = G.Game_des.length();
+        char des_buff[des_len];
+        write(skt, &des_len,2);
+        memcpy(des_buff, G.Game_des.c_str(), des_len);
+        write(skt, des_buff, des_len);
+
+
+
+
+
+}
+
+// 10 write
+void writeCharacter(Character Ch , int skt){
+	
+	int type = 10;
+        write(skt,&type,1);
+
+        write(skt, &Ch.Char_Name,32);
+        write(skt, &Ch.Flags,1);
+        write(skt, &Ch.Attack,2);
+        write(skt, &Ch.Defense,2);
+        write(skt, &Ch.Regen,2);
+        write(skt, &Ch.Health,2);
+        write(skt, &Ch.Gold,2);
+        write(skt, &Ch.Curr_Room_Num,2);
+
+   
+        write(skt, &Ch.Char_Des_len,2);
+	char des_buff[Ch.Char_Des_len];
+        memcpy(des_buff, Ch.Char_des.c_str(), Ch.Char_Des_len);
+        write(skt, des_buff, Ch.Char_Des_len);
+
+
+
+}
+
+// 9 write
+void writeRoom(Room P, int skt){
+	int type = 9;
+        write(skt,&type,1);
+
+	write(skt, &P.Room_num, 2); 
+
+	char name_buff[sizeof(P.Room_name)];
+        strncpy(name_buff,P.Room_name.c_str(), sizeof(name_buff));
+        write(skt, name_buff,32);
+	
+	write(skt, &P.Room_des_len,2);
+        char des_buff[P.Room_des_len];
+        memcpy(des_buff, P.Room_des.c_str(), P.Room_des_len);
+        write(skt, des_buff, P.Room_des_len);
+
+
+}
+
+// 8 write
+void writeAccept(Accept P, int skt){
+
+	int type = 8;
+        write(skt,&type,1);
+	
+
+	write(skt, &P.Accepted, 1);
+
+}
+
+// 7 write
+void writeError(Error P, int skt){
+
+	int type = 7;
+        write(skt,&type,1);
+
+	if(P.Err_code == 0){
+		P.Err_Message = "Other.";
+	}
+	else if(P.Err_code == 1){
+                P.Err_Message = "Bad Room.";
+        }
+	else if(P.Err_code == 2){
+                P.Err_Message = "Player Exists.";
+        }
+	else if(P.Err_code == 3){
+                P.Err_Message = "Bad Monster.";
+        }
+	else if(P.Err_code == 4){
+                P.Err_Message = "Stat Error.";
+        }
+	else if(P.Err_code == 5){
+                P.Err_Message = "Not Ready.";
+        }
+	else if(P.Err_code == 6){
+                P.Err_Message = "No target.";
+        }
+	else if(P.Err_code == 7){
+                P.Err_Message = "No Fight.";
+        }
+	else if(P.Err_code == 8){
+                P.Err_Message = "No player vs. player combat on the server.";
+        }
+	else{
+	}
+	write(skt, &P.Err_code, 1);
+	P.Err_Message_len = P.Err_Message.length();
+	write(skt, &P.Err_Message_len, 2);
+	
+	char des_buff[P.Err_Message_len];
+        memcpy(des_buff, P.Err_Message.c_str(), P.Err_Message_len);
+        write(skt, des_buff, P.Err_Message_len);
+
+}
+
+// 1 write
+
+void writeMessage(Message P, int skt){
+
+	int type = 1;
+        write(skt,&type,1);
+
+	write(skt, &P.Message_Len, 2);
+	write(skt, &P.Rec_Name, 32);
+	
+	write(skt, &P.Sen_Name,32);
+
+	char des_buff[P.Message_Len];
+        memcpy(des_buff, P.The_Message.c_str(), P.Message_Len);
+        write(skt, des_buff, P.Message_Len);
+}
+
+
+
+
+
+class client;
+vector<client*> clients;
+mutex data_lock; 
+class client {
+        public:
+                int client_fd;
+                thread client_thread;
+                char name[128];
+                int c_index;
+                mutex send_mutex;
+		int type;
+		Player* mine;//
+		Player me;//
+
+                client(int cfd) : client_fd(cfd) {
+                        client_thread = thread(&client::our_thread, this); 
+                }
+                void our_thread(){
+			Character Ch;
+			Connection Co;
+			Room R;
+			Accept A;
+			Error E;
+			Loot L;
+			PvPFight Pf;
+			Fight F;
+			ChangeRoom Cr;
+			Message M;
+			int alive, join, monster, started, ready;
+			alive  = 128;
+                        monster = 32;
+                        started = 16;
+                        join = 64;
+			ready = 8;
+                        char this_buffer[2048];
+                        char name[128];
+			writeGame(G,client_fd);//
+			//vector<int> r;
+
+
+                        for(;;){
+				size_t readlen = read(client_fd, &type,1);//
+				cout << "Type: " << type << endl;//
+                                if(!readlen) break; 
+                                data_lock.lock();
+
+                                if(type == 10){
+					cout << "READING A TYPE 10" << endl;
+                                        read(client_fd, &Ch.Char_Name,32);
+					cout << "Name: " << Ch.Char_Name << endl;
+
+                                        read(client_fd, &Ch.Flags,1);
+					Ch.Flags = alive + join + ready;
+                                        read(client_fd, &Ch.Attack,2);
+                                        read(client_fd, &Ch.Defense,2);
+                                        read(client_fd, &Ch.Regen,2);
+                                        read(client_fd, &Ch.Health,2);
+					Ch.Health = 100;
+                                        read(client_fd, &Ch.Gold,2);
+					Ch.Gold = 0;
+                                        read(client_fd, &Ch.Curr_Room_Num,2);
+					Ch.Curr_Room_Num = 0;
+
+                                        char des_buff[Ch.Char_Des_len];
+                                        read(client_fd, &Ch.Char_Des_len,2);
+
+                                        read(client_fd, des_buff,Ch.Char_Des_len);
+					Ch.Char_des = des_buff;
+					for( int i = 0; i < Players.size(); i++){//
+						cout << "Chacking player name: " << endl;
+						if (Ch.Char_Name == Players[i]->getName()){
+							E.Err_code = 2;
+                                                	writeError(E,client_fd);
+							cout << "Found one!" << endl;
+						}
+					}
+						if(Ch.Attack+Ch.Defense+Ch.Regen > 100 || Ch.Attack+Ch.Defense+Ch.Regen  <= 0){
+                                                	E.Err_code = 4;
+                                               		 writeError(E,client_fd);
+
+                                        	} 
+						else{
+							me.setName(Ch.Char_Name);
+							me.setFlags(Ch.Flags);
+							me.setAtt(Ch.Attack);
+							me.setDef(Ch.Defense);
+							me.setReg(Ch.Regen);
+							me.setHP(Ch.Health);
+							me.setGold(Ch.Gold);
+							me.setRoom(Ch.Curr_Room_Num);
+							me.setDes(Ch.Char_des);
+							mine->AddChar(&me);
+	                                                Players.push_back(mine);
+							writeAccept(A,client_fd);
+							/*for( int i = 0; i < Players.size(); i++){
+								writeCharacter(Players[i]->getPlayer(), Players[i]->getSkt());
+							}*/
+							writeCharacter(Ch,client_fd);
+
+						}
+						//mine->AddChar(&me);
+						//Players.push_back(mine);
+						//mine->AddChar(Players);
+						//writeAccept(A,client_fd);
+						//writeRoom(R,client_fd);
+                                        	//writeCharacter(Ch,client_fd);
+				}
+				if(type == 12){//
+					cout << "READING A TYPE 12" << endl;
+                                }
+				if(type == 9){
+					cout << "READING A TYPE 9" << endl;
+					read(client_fd,&R.Room_num,2);
+                                        read(client_fd,&R.Room_name,32);
+                                        char des_buffer[R.Room_des_len];
+                                        read(client_fd,&R.Room_des_len,2);
+                                        read(client_fd,des_buffer,R.Room_des_len);
+					R.Room_des = des_buffer;
+                                        writeRoom(R,client_fd);
+					
+                                }
+				if(type == 8){//
+					cout << "READING A TYPE 8" << endl;
+					read(client_fd,&A.Accepted,1);
+					writeAccept(A,client_fd);
+                                }
+				if(type == 6){
+					cout << "READING A TYPE 6" << endl;
+					Ch.Flags += started;
+					Ch.Curr_Room_Num = 1;
+						for(int j = 0; j < myRooms[0].conn.size(); j++){                 
+                                                	Co.Conn_Room_num = myRooms[myRooms[0].conn[j]].getRnum();
+                                                      	Co.Conn_Room_name = myRooms[myRooms[0].conn[j]].getRname();
+                                                        Co.Conn_Room_des = myRooms[myRooms[0].conn[j]].getRdes();
+                                                        Co.Conn_Room_des_len = myRooms[myRooms[0].conn[j]].Room_des_len; 
+                                                        writeConnection(Co, client_fd);
+							/*for (int i = 0; i < Players.size(); i++){
+								//cout << "people in this room: " << i << endl;
+								//cout << "Players in this room:" << Players[i]->getPlayer() << endl;
+								//writeCharacter(mine[i].getPlayer(),mine[i].getSkt());
+                                                        	writeCharacter(Players[i]->getPlayer(), Players[i]->getSkt());
+                                                	}*/
+                                                 } 
+						for (int i = 0; i < Players.size(); i++){
+							writeCharacter(Players[i]->getPlayer(), Players[i]->getSkt());
+						}
+
+					//writeCharacter(Ch,client_fd);
+                                }
+				if(type == 5){
+					cout << "READING A TYPE 5" << endl;
+                                }
+				if(type == 4){
+					cout << "READING A TYPE 4" << endl;
+					E.Err_code = 8;
+                                        writeError(E,client_fd);
+				}
+				if(type == 3){
+					cout << "READING A TYPE 3" << endl;
+                                }
+				if(type == 2){
+					cout << "READING A TYPE 2" << endl;
+					read(client_fd,&Cr.change_room,2);
+					for( int i = 0; i < myRooms.size(); i++){
+						if(Cr.change_room == myRooms[i].getRnum()){
+							if(Ch.Curr_Room_Num  == 9 && Cr.change_room == 3){
+								Ch.Curr_Room_Num = Cr.change_room;
+                                                                R.Room_num = Cr.change_room;
+                                                                R.Room_name = myRooms[i].getRname();
+                                                                R.Room_des = myRooms[i].getRdes();
+                                                                R.Room_des_len = myRooms[i].Room_des_len;
+								for(int j = 0; j < myRooms[i].conn.size(); j++){                 
+                                                			Co.Conn_Room_num = myRooms[myRooms[i].conn[j]].getRnum();
+                                                			Co.Conn_Room_name = myRooms[myRooms[i].conn[j]].getRname();
+                                                			Co.Conn_Room_des = myRooms[myRooms[i].conn[j]].getRdes();
+                                                			Co.Conn_Room_des_len = myRooms[myRooms[i].conn[j]].Room_des_len; 
+                                                			writeConnection(Co, client_fd);
+								}
+								/*for( int k = 0; k < MyRooms[i].Monster.size();k++){
+
+									Ch.Char_Name = MyRooms[MyRooms[i].addMonsters()];
+                                                                        Ch.Flags = Monsters[i].getFlags();
+                                                                        Ch.Attack = Monsters[i].getAtt();
+                                                                        Ch.Defense = Monsters[i].getDef();
+                                                                        Ch.Regen = Monsters[i].getReg();
+                                                                        Ch.Health = Monsters[i].getHP();
+                                                                        Ch.Gold = Monsters[i].getGold();
+                                                                        Ch.Curr_Room_Num = Monsters[i].getRoom();
+                                                                        Ch.Char_des = Monsters[i].getDes();
+                                                                        Ch.Char_Des_len = Monsters[i].Char_Des_len;
+								}*/
+								/*for( int k = 0; k < Monsters.size(); k++){
+
+									Ch.CharName = Monsters[i].getMName();
+									Ch.Flags = Monsters[i].getFlags();
+									Ch.Attack = Monsters[i].getAtt();
+									Ch.Defense = Monsters[i].getDef();
+									Ch.Regen = Monsters[i].getReg();
+									Ch.Health = Monsters[i].getHP();
+									Ch.Gold = Monsters[i].getGold();
+									Ch.Curr_Room_Num = Monsters[i].getRoom();
+									Ch.Char_des = Monsters[i].getDes();
+									Ch.Char_Des_len = Monsters[i].Char_Des_len;
+
+
+								}*/
+                                                                R.setRnum(R.Room_num);
+                                                                R.setRname(R.Room_name);
+                                                                R.setRdes(R.Room_des);
+                                                                writeRoom(R,client_fd);
+								writeCharacter(Ch, client_fd);
+ 							}
